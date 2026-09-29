@@ -1,0 +1,149 @@
+version: nws.recipe/v1
+kind: infra
+metadata:
+  id: nws/vagrant.vm-cluster
+  version: "1.0.0"
+  description: "Creates multiple VM instances on the host machine using a single Vagrantfile."
+spec:
+  category: provision
+  provides:
+    - name: "infra.vm"
+      attrs:
+        driver: "vagrant"
+
+  defaults:
+    params:
+      count: 1
+      prefix: "nws-vm"
+      box: "bento/ubuntu-22.04"
+      memory: "1024"
+      cpus: "1"
+      ip_base: "192.168.56"
+      ip_start: 10
+
+  assets:
+    - "bin/create-config.sh"
+    - "bin/create-mock-config.sh"
+    - "bin/cleanup-vagrant.sh"
+
+  workspace:
+    mode: persistent
+
+  tasks:
+    - name: prepare-vagrantfile
+      action:
+        exec.local:
+          inheritEnv:
+            - HOME
+            - VAGRANT_*
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            if [ -f Vagrantfile ]; then
+              echo "Skip to generate Vagrantfile"
+              exit 0
+            fi
+
+            cat <<EOF > Vagrantfile
+            # -*- mode: ruby -*-
+            # vi: set ft=ruby :
+            Vagrant.configure("2") do |config|
+              (1..{{ .Params.count }}).each do |i|
+                hostname = "{{ .Params.prefix }}-#{i-1}"
+                ip_address = "{{ .Params.ip_base }}.#{ {{ .Params.ip_start }} + i - 1 }"
+
+                config.vm.define hostname do |node|
+                  node.vm.box = "{{ .Params.box }}"
+                  node.vm.hostname = hostname
+                  node.vm.network "private_network", ip: ip_address
+
+                  node.vm.provider "virtualbox" do |vb|
+                    vb.memory = "{{ .Params.memory }}"
+                    vb.cpus = "{{ .Params.cpus }}"
+                  end
+                end
+              end
+            end
+            EOF
+
+    - name: provision-and-extract
+      dependsOn: [prepare-vagrantfile]
+      action:
+        exec.local:
+          inheritEnv:
+            - HOME
+            - VAGRANT_*
+          scriptTpl: |
+            #!/bin/bash
+            set -euxo pipefail
+
+            # Create output directories
+            mkdir -p "{{ .Outputs.instances }}"
+
+            if [ "${NWS_DRY_RUN_ENABLED}" != "0" ]; then
+              echo "Validating Vagrantfile instead of up"
+              vagrant validate
+
+              for i in $(seq 0 $(({{ .Params.count }} - 1))); do
+                VM_NAME="{{ .Params.prefix }}-${i}"
+                {{ .Assets }}/bin/create-mock-config.sh \
+                  "{{ .Params.ip_base }}.$((i+{{ .Params.ip_start }}))" \
+                  "$VM_NAME" \
+                  "{{ .Outputs.instances }}/${VM_NAME}.json" \
+                  "{{ .Outputs.known_hosts }}"
+              done
+
+              touch "{{ .Outputs.known_hosts }}"
+
+            else
+
+              # Run vagrant up once to create/start all defined VMs
+              vagrant up
+
+              # Get ssh-config for all running VMs managed by this Vagrantfile
+              vagrant ssh-config > "{{ .Outputs.all_ssh_config }}"
+
+              # Loop through and create a separate state file for each instance
+              for i in $(seq 0 $(({{ .Params.count }} - 1))); do
+                VM_NAME="{{ .Params.prefix }}-${i}"
+                # The script will parse the full config and extract info for one VM
+                IP_ADDRESS="{{ .Params.ip_base }}.$((i+{{ .Params.ip_start }}))"
+                {{ .Assets }}/bin/create-config.sh \
+                  "{{ .Outputs.all_ssh_config }}" \
+                  "$VM_NAME" \
+                  "{{ .Outputs.instances }}/${VM_NAME}.json" \
+                  "$IP_ADDRESS" \
+                  "{{ .Outputs.known_hosts }}"
+              done
+
+              {{ .Assets }}/bin/create-known_hosts.sh \
+                "{{ .Outputs.all_ssh_config }}" \
+                "{{ .Outputs.known_hosts }}"
+
+            fi
+
+      stateChanges:
+        generate-instances:
+          count: "{{ .Params.count }}"
+          op: set
+          path: "/instances/{{ .Params.prefix }}-{{ .Loop.index }}"
+          valueFromFile: "{{ .Outputs.instances }}/{{ .Params.prefix }}-{{ .Loop.index }}.json"
+
+
+    - name: teardown-instance
+      operation: destruct
+      action:
+        exec.local:
+          inheritEnv:
+            - HOME
+            - VAGRANT_*
+          scriptTpl: |
+            #!/bin/bash
+            set -eu
+            echo "Destroying VM: {{ .Target }}..."
+            vagrant destroy -f
+      stateChanges:
+        remove-instance-from-state:
+          op: remove
+          path: "/instances"

@@ -1,0 +1,13 @@
+version: nws.catalog/v1
+recipes:
+  git:
+    path: ./tools/git.yaml
+
+  jq:
+    path: ./tools/jq.yaml
+
+  host.tool.essentials:
+    path: ./debug/host.tool.yaml
+
+  debug.environment:
+    path: ./debug/environment.yaml

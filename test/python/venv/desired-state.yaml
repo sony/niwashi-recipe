@@ -1,0 +1,18 @@
+version: nws.state/v1
+metadata: {}
+
+inventory:
+ nodes:
+   test-node1:
+     capabilities:
+       - test/python.venv.caller
+
+infrastructure:
+  generators:
+    vm:
+      provisioner: infra.vm.driver=vagrant
+      params:
+        count: 1
+        box: ubuntu/jammy64
+        cpus: 2
+        memory: 1024

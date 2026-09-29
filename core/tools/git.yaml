@@ -1,0 +1,38 @@
+version: nws.recipe/v1
+kind: host
+metadata:
+  id: nws/tools.git
+  version: "0.1.0"
+  description: Probe git on host
+spec:
+
+  runtime:
+    type: tool
+    name: git
+
+  provides:
+    - name: host.tool.git
+
+  tasks:
+
+    - name: get-git-version
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            GIT_PATH=$(which git)
+            VERSION=$(git --version | awk '//{print $3}')
+
+            cat << EOS > {{ .Outputs }}/git_info.json
+            {
+              "version": "${VERSION}",
+              "path": "${GIT_PATH}"
+            }
+            EOS
+      stateChanges:
+        add-tool-info:
+          op: set
+          path: /
+          valueFromFile: "{{ .Outputs }}/git_info.json"

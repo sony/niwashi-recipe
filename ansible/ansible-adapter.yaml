@@ -1,0 +1,66 @@
+version: nws.recipe/v1
+kind: adapter
+metadata:
+  id: nws/ansible.adapter
+  version: "0.1.0"
+  description: Use host-provided Ansible (fails if not present) and expose a tool.run adapter
+spec:
+
+  provides:
+    - name: adapter.tool.ansible
+
+  assets:
+    - "bin/gen-inventory.sh"
+
+  executionUnit: default
+  allowedScope: cluster
+  commands:
+    default:
+      task: run-playbook
+    ansible-playbook:
+      task: run-playbook
+      description: "Run ansible-playbook"
+    ansible-galaxy:
+      task: run-galaxy
+      description: "Run ansible-galaxy"
+    gen-inventory:
+      task: gen-inventory
+      description: "Generate ansible inventory files (hosts.ini, ssh_config)"
+
+  tasks:
+    - name: run-playbook
+      action:
+        exec.local:
+          inheritEnv:
+            - ANSIBLE_*
+            - SSH_AUTH_SOCK
+            - HOME
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+            OPTION=""
+            if [ "${NWS_DRY_RUN_ENABLED}" != "0" ]; then
+              OPTION="$OPTION --syntax-check"
+            fi
+            exec {{ .Runtime.tool.ansible.playbook.path }} "$@" $OPTION
+    - name: run-galaxy
+      action:
+        exec.local:
+          inheritEnv:
+            - ANSIBLE_*
+            - SSH_AUTH_SOCK
+            - HOME
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+            exec {{ .Runtime.tool.ansible.galaxy.path }} "$@"
+    - name: gen-inventory
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+            exec {{ .Assets }}/bin/gen-inventory.sh \
+              "${NWS_STATE}" \
+              "${NWS_PARAMS}" \
+              "${PWD}"

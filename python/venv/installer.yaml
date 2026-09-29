@@ -1,0 +1,27 @@
+version: nws.recipe/v1
+kind: host
+metadata:
+  id: nws/python.venv
+  version: "1.0.0"
+  description: "Host tool for Python virtual environments installer"
+spec:
+  provides:
+    - name: host.tool.python-venv
+
+  tasks:
+    - name: install
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            if ! command -v python3 &> /dev/null; then
+              echo "Python 3 is not installed. Please install Python 3 to use this tool."
+              exit 1
+            fi
+
+            if ! python3 -m venv --help &> /dev/null; then
+              echo "The 'venv' module is not available. Please ensure you have the Python 3 venv module installed."
+              exit 1
+            fi

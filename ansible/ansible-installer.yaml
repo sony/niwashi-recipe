@@ -1,0 +1,70 @@
+version: nws.recipe/v1
+kind: host
+metadata:
+  id: nws/ansible.installer
+  version: "0.1.0"
+  description: "Checks for Ansible installation and records its version to the state."
+spec:
+
+  provides:
+    - name: host.tool.ansible
+
+  runtime:
+    type: tool
+    name: ansible
+
+  defaults:
+    params:
+      # 例: 最低バージョンを要求したい場合（任意）
+      min_version: ""
+
+  tasks:
+    # 1) ホストの ansible を検出（無ければタスク失敗→レシピ失敗）
+    - name: check-ansible
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            # ansible-playbook と ansible-galaxy の存在確認
+            if ! command -v ansible-playbook >/dev/null 2>&1; then
+              echo "ansible-playbook not found in PATH" >&2
+              exit 1
+            fi
+            if ! command -v ansible-galaxy >/dev/null 2>&1; then
+              echo "ansible-galaxy not found in PATH" >&2
+              exit 1
+            fi
+
+            PLAYBOOK_BIN="$(command -v ansible-playbook)"
+            GALAXY_BIN="$(command -v ansible-galaxy)"
+            VER="$($PLAYBOOK_BIN --version | head -n1 | grep -oP '[0-9]+.[0-9]+.[0-9]+')"
+
+            # 最低バージョンチェック（指定がある場合）
+            if [ -n "{{ .Params.min_version }}" ]; then
+              # 簡易比較: 期待値と一致/前方一致（厳密なSemVer比較は将来アダプタ側で）
+              case "$VER" in
+                {{ .Params.min_version }}* ) : ;;
+                * ) echo "ansible version $VER < {{ .Params.min_version }}" >&2; exit 1 ;;
+              esac
+            fi
+
+            jq -n \
+              --arg version "$VER" \
+              --arg playbook_path "$PLAYBOOK_BIN" \
+              --arg galaxy_path "$GALAXY_BIN" \
+              '{
+                playbook: {
+                  version: $version,
+                  path: $playbook_path
+                },
+                galaxy: {
+                  path: $galaxy_path
+                }
+              }' > "{{ .Outputs }}/ansible_info.json"
+      stateChanges:
+        add-tool-info:
+          op: set
+          path: /
+          valueFromFile: "{{ .Outputs }}/ansible_info.json"

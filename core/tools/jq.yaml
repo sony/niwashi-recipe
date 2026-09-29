@@ -1,0 +1,38 @@
+version: nws.recipe/v1
+kind: host
+metadata:
+  id: nws/tools.jq
+  version: "0.1.0"
+  description: Probe jq on host
+spec:
+
+  runtime:
+    type: tool
+    name: jq
+
+  provides:
+    - name: host.tool.jq
+
+  tasks:
+
+    - name: get-jq-version
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            JQ_PATH=$(which jq)
+            VERSION=$(jq --version | awk -F '-' '//{print $2}')
+
+            cat << EOS > {{ .Outputs }}/jq_info.json
+            {
+              "version": "${VERSION}",
+              "path": "${JQ_PATH}"
+            }
+            EOS
+      stateChanges:
+        add-tool-info:
+          op: set
+          path: /
+          valueFromFile: "{{ .Outputs }}/jq_info.json"

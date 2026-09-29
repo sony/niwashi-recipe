@@ -1,0 +1,6 @@
+version: nws.catalog/v1
+recipes:
+  adapter:
+    path: ./ansible-adapter.yaml
+  tool:
+    path: ./ansible-installer.yaml

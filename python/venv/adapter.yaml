@@ -1,0 +1,73 @@
+version: nws.recipe/v1
+kind: adapter
+metadata:
+  id: nws/python.venv.adapter
+  version: "1.0.0"
+  description: "Adapter for Python virtual environments"
+spec:
+
+  requires:
+    - name: host.tool.python-venv
+
+  provides:
+    - name: adapter.runtime.python-venv
+
+  allowedScope: "*"
+
+  commands:
+    default:
+      task: run
+    install:
+      task: install
+      description: "Install Python virtual environment at the specified path"
+    run:
+      task: run
+      description: "Activate the Python virtual environment and run commands at the specified path"
+    uninstall:
+      task: uninstall
+      description: "Uninstall the Python virtual environment at the specified path"
+
+  tasks:
+    - name: install
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+            # argv: <venv-dir> [requirements.txt]
+
+            VENV_DIR=$1
+            REQUIREMENTS="${2:-}"
+
+            python3 -m venv $VENV_DIR
+
+            if [ -n "$REQUIREMENTS" ]; then
+              "$VENV_DIR/bin/pip" install --upgrade pip
+              "$VENV_DIR/bin/pip" install -r "$REQUIREMENTS"
+            fi
+
+    - name: run
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+            # argv: <venv-dir> <command> [args...]
+
+            VENV_DIR=$1
+            shift
+
+            source "$VENV_DIR/bin/activate"
+            exec "$@"
+
+    - name: uninstall
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+            # argv: <venv-dir>
+
+            VENV_DIR=$1
+
+            rm -rf "$VENV_DIR"

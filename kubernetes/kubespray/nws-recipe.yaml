@@ -1,0 +1,112 @@
+version: nws.recipe/v1
+kind: cluster
+metadata:
+  id: nws/kubernetes.by.kubespray
+  version: 0.0.1
+  description: test
+spec:
+  provides:
+    - name: cluster.kubernetes
+      attrs: { by: kubespray }
+    # deprecated orchestrator.kubernetes, use cluster.kubernetes
+    - name: orchestrator.kubernetes
+      attrs: { by: kubespray }
+
+  requires:
+    - host.tool.git         # for cloning kubespray repository
+    - host.tool.ansible     # for generating inventory file
+    - host.tool.python-venv # for preparing Python virtual environment and running Ansible playbooks
+
+  workspace:
+    mode: persistent
+
+  defaults:
+    params:
+      kubespray_url: https://github.com/kubernetes-sigs/kubespray.git
+      version: v2.27.1
+      become_user: root
+      groups:
+        kube_control_plane: []
+        kube_node: []
+        etcd: []
+
+  tasks:
+    - name: ensure-dirs
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            if [ ! -d kubespray ]; then
+              git clone {{ .Params.kubespray_url }} kubespray
+            fi
+
+            pushd kubespray
+            git fetch --all
+            git checkout refs/tags/{{ .Params.version }}
+            popd
+
+            # todo: verify kubespray dir
+
+    - name: gen-inventory
+      dependsOn: [ensure-dirs]
+      action:
+        tool.run:
+          toolRef: adapter.tool.ansible
+          command: gen-inventory
+          workdirTpl: "{{ .Paths.work_dir }}/kubespray"
+
+    - name: prepare-python-venv
+      dependsOn: [ensure-dirs]
+      action:
+        tool.run:
+          toolRef: adapter.runtime.python-venv
+          workdirTpl: "{{ .Paths.work_dir }}/kubespray"
+          command: install
+          argvTpl:
+            - ".venv"
+            - "requirements.txt"
+
+    - name: run-kubespray
+      dependsOn: [gen-inventory, prepare-python-venv]
+      action:
+        tool.run:
+          toolRef: adapter.runtime.python-venv
+          workdirTpl: "{{ .Paths.work_dir }}/kubespray"
+          command: run
+          argvTpl:
+            - ".venv"
+            - ansible-playbook
+            - -i
+            - hosts.ini
+            - --become-user={{ .Params.become_user }}
+            - cluster.yml
+
+    - name: reset-cluster
+      operation: destruct
+      action:
+        tool.run:
+          toolRef: adapter.runtime.python-venv
+          workdirTpl: "{{ .Paths.work_dir }}/kubespray"
+          command: run
+          argvTpl:
+            - ".venv"
+            - ansible-playbook
+            - -i
+            - hosts.ini
+            - --become-user={{ .Params.become_user }}
+            - reset.yml
+            - -e
+            - "reset_confirmation=yes"
+
+    - name: uninstall-python-venv
+      operation: destruct
+      dependsOn: [reset-cluster]
+      action:
+        tool.run:
+          toolRef: adapter.runtime.python-venv
+          workdirTpl: "{{ .Paths.work_dir }}/kubespray"
+          command: uninstall
+          argvTpl:
+            - ".venv"

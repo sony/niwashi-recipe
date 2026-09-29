@@ -1,0 +1,74 @@
+version: nws.recipe/v1
+kind: node
+metadata:
+  id: test/python.venv.caller
+  version: 1.0.0
+spec:
+  tasks:
+
+    - name: install
+      action:
+        tool.run:
+          toolRef: adapter.runtime.python-venv
+          command: install
+          argvTpl:
+            - .venv
+
+    - name: verify-install
+      dependsOn: [install]
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            if [ ! -d ".venv" ]; then
+              echo "Virtual environment directory .venv does not exist"
+              exit 1
+            fi
+
+    - name: run
+      dependsOn: [verify-install]
+      action:
+        tool.run:
+          toolRef: adapter.runtime.python-venv
+          command: run
+          argvTpl:
+            - .venv
+            - echo
+            - "Hello from the Python virtual environment!"
+
+    - name: verify-run
+      dependsOn: [run]
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            if [ ! -d ".venv" ]; then
+              echo "Virtual environment directory .venv does not exist"
+              exit 1
+            fi
+
+    - name: cleanup
+      dependsOn: [verify-run]
+      action:
+        tool.run:
+          toolRef: adapter.runtime.python-venv
+          command: uninstall
+          argvTpl:
+            - .venv
+
+    - name: verify-cleanup
+      dependsOn: [cleanup]
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            if [ -d ".venv" ]; then
+              echo "Virtual environment directory .venv still exists after cleanup"
+              exit 1
+            fi

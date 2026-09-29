@@ -1,0 +1,33 @@
+version: nws.recipe/v1
+kind: node
+metadata:
+  id: nws/test.environment
+  version: "0.1.0"
+  description: Show test environment
+spec:
+
+  requires:
+    - host.tool.ansible
+    - host.tool.jq
+    - host.tool.git
+
+  tasks:
+    - name: show-environment
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+            env | grep NWS_
+            which jq
+            echo scope=${NWS_SCOPE}
+            echo target=${NWS_TARGET_ID}
+            cat ${NWS_STATE} | jq .
+
+    - name: get-ansible-version-via-cli
+      action:
+        tool.run:
+          toolRef: adapter.tool.ansible
+          command: ansible-playbook
+          argvTpl:
+            - --version

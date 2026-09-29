@@ -1,0 +1,24 @@
+version: nws.recipe/v1
+kind: node
+metadata:
+  id: nws/host.tool.essentials
+  version: "0.1.0"
+  description: probe host tools
+spec:
+  provides:
+    - name: host.tool.essentials
+
+  requires:
+    - host.tool.jq
+    - host.tool.git
+
+  tasks:
+    - name: probe
+      action:
+        exec.local:
+          scriptTpl: |
+            #!/bin/bash
+            set -euo pipefail
+
+            echo {{ Runtime.tool }}
+
